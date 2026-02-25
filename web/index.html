@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face Space Shooter – Control with Your Face!</title>
+  <meta name="description" content="A space shooter game controlled by your facial expressions. Open your mouth to shoot, smile to move down, raise eyebrows to move up!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <h1>FACE SPACE SHOOTER</h1>
+      <p id="loading-status">Initializing camera & AI…</p>
+    </div>
+  </div>
+
+  <!-- Game Container -->
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <video id="webcam" autoplay playsinline></video>
+    <!-- Small camera preview overlay -->
+    <canvas id="camPreview"></canvas>
+    <div id="cam-label">YOUR FACE</div>
+
+    <!-- Bottom control bar – horizontal, compact -->
+    <div id="controls-bar">
+      <div class="ctrl" id="ctrl-smile"><span class="ctrl-icon">😊</span> Smile ↓</div>
+      <div class="ctrl" id="ctrl-brows"><span class="ctrl-icon">🤨</span> Brows ↑</div>
+      <div class="ctrl" id="ctrl-mouth"><span class="ctrl-icon">😮</span> Mouth 🔫</div>
+      <div class="ctrl" id="ctrl-head"><span class="ctrl-icon">↔️</span> Head ←→</div>
+      <div class="ctrl" id="ctrl-pause"><span class="ctrl-icon">⏸️</span> P = Pause</div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
