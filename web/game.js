@@ -210,10 +210,11 @@ class Player {
     this.x = clamp(this.x + dx * this.speed, this.w / 2 + 10, W / 2);
     this.y = clamp(this.y + dy * this.speed, this.h / 2 + 10, H - this.h / 2 - 50);
   }
-  shoot() {
+  shoot(sfx) {
     if (this.shootCd <= 0) {
       this.bullets.push(new Bullet(this.x + this.w / 2, this.y));
       this.shootCd = 12;
+      if (sfx) sfx.shoot();
     }
   }
   update() {
@@ -464,6 +465,113 @@ class LaserGate {
 }
 
 // ============================================================
+// SOUND EFFECTS (Web Audio API - no files needed)
+// ============================================================
+
+class SoundManager {
+  constructor() {
+    this.ctx = null;
+    this.enabled = true;
+  }
+
+  _ensureCtx() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx;
+  }
+
+  /** Quick laser zap */
+  shoot() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, c.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(220, c.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.15, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.1);
+    osc.connect(gain).connect(c.destination);
+    osc.start(c.currentTime);
+    osc.stop(c.currentTime + 0.1);
+  }
+
+  /** Low rumble explosion */
+  explosion() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    // Noise burst
+    const dur = 0.25;
+    const buf = c.createBuffer(1, c.sampleRate * dur, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * 0.3));
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.2, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+    const filter = c.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(600, c.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(100, c.currentTime + dur);
+    src.connect(filter).connect(gain).connect(c.destination);
+    src.start(c.currentTime);
+  }
+
+  /** Hit / damage impact */
+  damage() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, c.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, c.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.2, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.2);
+    osc.connect(gain).connect(c.destination);
+    osc.start(c.currentTime);
+    osc.stop(c.currentTime + 0.2);
+  }
+
+  /** Ascending arpeggio – level up! */
+  levelUp() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    const notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, c.currentTime + i * 0.1);
+      gain.gain.setValueAtTime(0.15, c.currentTime + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.1 + 0.2);
+      osc.connect(gain).connect(c.destination);
+      osc.start(c.currentTime + i * 0.1);
+      osc.stop(c.currentTime + i * 0.1 + 0.2);
+    });
+  }
+
+  /** Descending tones – game over */
+  gameOver() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    const notes = [440, 349, 262, 196]; // A4 F4 C4 G3
+    notes.forEach((freq, i) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, c.currentTime + i * 0.2);
+      gain.gain.setValueAtTime(0.18, c.currentTime + i * 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.2 + 0.35);
+      osc.connect(gain).connect(c.destination);
+      osc.start(c.currentTime + i * 0.2);
+      osc.stop(c.currentTime + i * 0.2 + 0.35);
+    });
+  }
+}
+
+// ============================================================
 // MAIN GAME
 // ============================================================
 
@@ -496,6 +604,7 @@ class FaceGame {
 
     this._initGame();
     this._bindKeys();
+    this.sfx = new SoundManager();
   }
 
   _initGame() {
@@ -588,7 +697,7 @@ class FaceGame {
     if (this.expr.eyebrowRaise) dy = -1;
     if (this.expr.smile && !this.expr.mouthOpen) dy = 1;
     this.player.move(dx, dy);
-    if (this.expr.mouthOpen) this.player.shoot();
+    if (this.expr.mouthOpen) this.player.shoot(this.sfx);
     if (this.blinkCd > 0) this.blinkCd--;
 
     // Update control bar highlights
@@ -644,11 +753,13 @@ class FaceGame {
           if (e.hp <= 0) {
             this.player.score += e.points;
             this._explode(e.x, e.y, e.color);
+            this.sfx.explosion();
             this.enemies.splice(ei, 1);
             const nl = 1 + Math.floor(this.player.score / this.scoreToLevel);
             if (nl > this.level) {
               this.level = nl;
               this.player.setSpeedForLevel(nl);
+              this.sfx.levelUp();
             }
           }
           break;
@@ -666,6 +777,7 @@ class FaceGame {
           if (m.hp <= 0) {
             this.player.score += m.points;
             this._explode(m.x, m.y, COL.red);
+            this.sfx.explosion();
             this.mines.splice(mi, 1);
           }
           break;
@@ -680,6 +792,7 @@ class FaceGame {
         this.player.health -= 20;
         this.player.invincible = 60;
         this._explode(e.x, e.y, COL.orange);
+        this.sfx.damage();
         this.enemies.splice(ei, 1);
       }
     }
@@ -690,6 +803,7 @@ class FaceGame {
         this.player.health -= 25;
         this.player.invincible = 60;
         this._explode(this.player.x, this.player.y, COL.grey);
+        this.sfx.damage();
       }
     }
 
@@ -700,6 +814,7 @@ class FaceGame {
         this.player.health -= 30;
         this.player.invincible = 60;
         this._explode(m.x, m.y, COL.red);
+        this.sfx.damage();
         this.mines.splice(mi, 1);
       }
     }
@@ -710,6 +825,7 @@ class FaceGame {
         this.player.health -= 15;
         this.player.invincible = 40;
         this._explode(this.player.x, this.player.y, COL.red);
+        this.sfx.damage();
       }
     }
 
@@ -728,6 +844,7 @@ class FaceGame {
     if (this.player.health <= 0) {
       this.player.health = 0;
       this.state = 'GAME_OVER';
+      this.sfx.gameOver();
     }
   }
 
