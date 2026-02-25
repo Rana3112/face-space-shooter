@@ -464,6 +464,48 @@ class LaserGate {
   get offScreen() { return this.x < -20; }
 }
 
+class HealthPack {
+  /** Floating green health pickup — restores 25 HP */
+  constructor() {
+    this.x = W + 20;
+    this.y = rand(60, H - 100);
+    this.size = 16;
+    this.speed = rand(1.2, 2.0);
+    this.timer = 0;
+  }
+  update() {
+    this.x -= this.speed;
+    this.timer++;
+  }
+  draw(ctx) {
+    const pulse = 1 + 0.15 * Math.sin(this.timer * 0.12);
+    const s = this.size * pulse;
+    const cx = this.x, cy = this.y;
+    // Glow
+    ctx.fillStyle = 'rgba(50,220,50,0.15)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, s + 8, 0, Math.PI * 2);
+    ctx.fill();
+    // Background circle
+    ctx.fillStyle = '#115511';
+    ctx.strokeStyle = '#32dc32';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Green cross
+    ctx.fillStyle = '#32dc32';
+    const t = 4, arm = s * 0.6;
+    ctx.fillRect(cx - t / 2, cy - arm, t, arm * 2);  // vertical
+    ctx.fillRect(cx - arm, cy - t / 2, arm * 2, t);  // horizontal
+  }
+  get rect() {
+    return { x: this.x - this.size, y: this.y - this.size, w: this.size * 2, h: this.size * 2 };
+  }
+  get offScreen() { return this.x < -40; }
+}
+
 // ============================================================
 // SOUND EFFECTS (Web Audio API - no files needed)
 // ============================================================
@@ -552,6 +594,24 @@ class SoundManager {
     });
   }
 
+  /** Heal chime */
+  heal() {
+    if (!this.enabled) return;
+    const c = this._ensureCtx();
+    const notes = [523, 784]; // C5 G5 — bright two-note chime
+    notes.forEach((freq, i) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, c.currentTime + i * 0.08);
+      gain.gain.setValueAtTime(0.18, c.currentTime + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.08 + 0.25);
+      osc.connect(gain).connect(c.destination);
+      osc.start(c.currentTime + i * 0.08);
+      osc.stop(c.currentTime + i * 0.08 + 0.25);
+    });
+  }
+
   /** Descending tones – game over */
   gameOver() {
     if (!this.enabled) return;
@@ -613,6 +673,7 @@ class FaceGame {
     this.asteroids = [];
     this.mines = [];
     this.laserGates = [];
+    this.healthPacks = [];
     this.particles = [];
     this.stars = Array.from({ length: 120 }, () => new Star(true));
     this.level = 1;
@@ -736,6 +797,10 @@ class FaceGame {
     if (this.level >= 5 && this.obstacleTimer % Math.max(200, 400 - this.level * 15) === 0) {
       this.laserGates.push(new LaserGate(this.level));
     }
+    // Health packs — spawn roughly every 300 frames (~5 sec)
+    if (this.obstacleTimer % 300 === 150) {
+      this.healthPacks.push(new HealthPack());
+    }
   }
 
   // ---- Collisions ----
@@ -836,10 +901,21 @@ class FaceGame {
       }
     }
 
+    // Health packs vs player
+    for (let hi = this.healthPacks.length - 1; hi >= 0; hi--) {
+      if (rectOverlap(this.healthPacks[hi].rect, pr)) {
+        this.player.health = Math.min(100, this.player.health + 25);
+        this._explode(this.healthPacks[hi].x, this.healthPacks[hi].y, COL.green);
+        this.sfx.heal();
+        this.healthPacks.splice(hi, 1);
+      }
+    }
+
     // Clean up off-screen obstacles
     this.asteroids = this.asteroids.filter(a => !a.offScreen);
     this.mines = this.mines.filter(m => !m.offScreen);
     this.laserGates = this.laserGates.filter(lg => !lg.offScreen);
+    this.healthPacks = this.healthPacks.filter(hp => !hp.offScreen);
 
     if (this.player.health <= 0) {
       this.player.health = 0;
@@ -993,6 +1069,7 @@ class FaceGame {
       this.asteroids.forEach(a => a.update());
       this.mines.forEach(m => m.update());
       this.laserGates.forEach(lg => lg.update());
+      this.healthPacks.forEach(hp => hp.update());
       this.particles = this.particles.filter(p => { p.update(); return !p.dead; });
       this.checkCollisions();
 
@@ -1004,6 +1081,7 @@ class FaceGame {
       this.laserGates.forEach(lg => lg.draw(ctx));
       this.asteroids.forEach(a => a.draw(ctx));
       this.mines.forEach(m => m.draw(ctx));
+      this.healthPacks.forEach(hp => hp.draw(ctx));
       this.player.draw(ctx);
       this.enemies.forEach(e => e.draw(ctx));
       this.particles.forEach(p => p.draw(ctx));
